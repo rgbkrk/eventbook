@@ -1,0 +1,35 @@
+[package]
+name = "eventbook-wasm"
+version = "0.1.0"
+edition = "2021"
+description = "WASM bindings for EventBook event sourcing in the browser"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+eventbook-core = { path = "../core" }
+napi = { version = "3.1.3", default-features = false, features = ["napi6"] }
+napi-derive = { version = "3.1.1", default-features = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+turso = { workspace = true }
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+
+[dependencies.web-sys]
+version = "0.3"
+features = [
+  "console",
+  "Window",
+  "Request",
+  "RequestInit",
+  "Response",
+  "Headers",
+]
+
+[features]
+browser = []
+
+[package.metadata.napi]
+targets = ["wasm32-wasip1-threads"]

@@ -1,0 +1,12 @@
+[package]
+name = "eventbook-core"
+version = "0.1.0"
+edition = "2021"
+description = "Core event types and shared logic for EventBook"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[lib]
+name = "eventbook_core"
