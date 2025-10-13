@@ -1,0 +1,21 @@
+{
+  "name": "eventbook-web-client",
+  "version": "0.1.0",
+  "description": "Web client for EventBook with WASM event sourcing",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "build:wasm": "cd ../wasm && wasm-pack build --target web --out-dir ../web-client/src/wasm",
+    "dev:full": "npm run build:wasm && npm run dev"
+  },
+  "devDependencies": {
+    "vite": "^5.0.0",
+    "@vitejs/plugin-basic-ssl": "^1.0.2"
+  },
+  "dependencies": {
+    "vite-plugin-wasm": "^3.2.2",
+    "vite-plugin-top-level-await": "^1.4.1"
+  }
+}
