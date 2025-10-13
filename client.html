@@ -1,344 +1,463 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EventBook Client</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
-            background-color: #f5f5f5;
-        }
-        .container {
-            background: white;
-            border-radius: 8px;
-            padding: 20px;
-            margin-bottom: 20px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        h1 {
-            color: #333;
-            border-bottom: 2px solid #4CAF50;
-            padding-bottom: 10px;
-        }
-        h2 {
-            color: #666;
-            margin-top: 0;
-        }
-        .form-group {
-            margin-bottom: 15px;
-        }
-        label {
-            display: block;
-            margin-bottom: 5px;
-            font-weight: bold;
-            color: #555;
-        }
-        input, textarea, select {
-            width: 100%;
-            padding: 8px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            font-size: 14px;
-            box-sizing: border-box;
-        }
-        button {
-            background-color: #4CAF50;
-            color: white;
-            padding: 10px 20px;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 16px;
-            margin-right: 10px;
-        }
-        button:hover {
-            background-color: #45a049;
-        }
-        button:disabled {
-            background-color: #cccccc;
-            cursor: not-allowed;
-        }
-        .status {
-            padding: 10px;
-            border-radius: 4px;
-            margin: 10px 0;
-        }
-        .success {
-            background-color: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
-        }
-        .error {
-            background-color: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
-        }
-        .events-list {
-            max-height: 400px;
-            overflow-y: auto;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-        }
-        .event-item {
-            padding: 15px;
-            border-bottom: 1px solid #eee;
-            background: #fafafa;
-            margin-bottom: 2px;
-        }
-        .event-item:last-child {
-            border-bottom: none;
-        }
-        .event-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 8px;
-        }
-        .event-type {
-            background: #007bff;
-            color: white;
-            padding: 2px 8px;
-            border-radius: 12px;
-            font-size: 12px;
-        }
-        .event-id {
-            font-size: 12px;
-            color: #666;
-        }
-        .event-payload {
-            background: white;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            padding: 10px;
-            font-family: monospace;
-            white-space: pre-wrap;
-            margin-top: 8px;
-        }
-        .two-column {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 20px;
-        }
-        @media (max-width: 768px) {
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>EventBook Client</title>
+        <style>
+            body {
+                font-family: Arial, sans-serif;
+                max-width: 1200px;
+                margin: 0 auto;
+                padding: 20px;
+                background-color: #f5f5f5;
+            }
+            .container {
+                background: white;
+                border-radius: 8px;
+                padding: 20px;
+                margin-bottom: 20px;
+                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            }
+            h1 {
+                color: #333;
+                border-bottom: 2px solid #4caf50;
+                padding-bottom: 10px;
+            }
+            h2 {
+                color: #666;
+                margin-top: 0;
+            }
+            .form-group {
+                margin-bottom: 15px;
+            }
+            label {
+                display: block;
+                margin-bottom: 5px;
+                font-weight: bold;
+                color: #555;
+            }
+            input,
+            textarea,
+            select {
+                width: 100%;
+                padding: 8px;
+                border: 1px solid #ddd;
+                border-radius: 4px;
+                font-size: 14px;
+                box-sizing: border-box;
+            }
+            button {
+                background-color: #4caf50;
+                color: white;
+                padding: 10px 20px;
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+                font-size: 16px;
+                margin-right: 10px;
+            }
+            button:hover {
+                background-color: #45a049;
+            }
+            button:disabled {
+                background-color: #cccccc;
+                cursor: not-allowed;
+            }
+            .status {
+                padding: 10px;
+                border-radius: 4px;
+                margin: 10px 0;
+            }
+            .success {
+                background-color: #d4edda;
+                color: #155724;
+                border: 1px solid #c3e6cb;
+            }
+            .error {
+                background-color: #f8d7da;
+                color: #721c24;
+                border: 1px solid #f5c6cb;
+            }
+            .events-list {
+                max-height: 400px;
+                overflow-y: auto;
+                border: 1px solid #ddd;
+                border-radius: 4px;
+            }
+            .event-item {
+                padding: 15px;
+                border-bottom: 1px solid #eee;
+                background: #fafafa;
+                margin-bottom: 2px;
+            }
+            .event-item:last-child {
+                border-bottom: none;
+            }
+            .event-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 8px;
+            }
+            .event-type {
+                background: #007bff;
+                color: white;
+                padding: 2px 8px;
+                border-radius: 12px;
+                font-size: 12px;
+            }
+            .event-id {
+                font-size: 12px;
+                color: #666;
+            }
+            .event-payload {
+                background: white;
+                border: 1px solid #ddd;
+                border-radius: 4px;
+                padding: 10px;
+                font-family: monospace;
+                white-space: pre-wrap;
+                margin-top: 8px;
+            }
             .two-column {
-                grid-template-columns: 1fr;
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 20px;
             }
-        }
-    </style>
-</head>
-<body>
-    <h1>EventBook Client</h1>
+            @media (max-width: 768px) {
+                .two-column {
+                    grid-template-columns: 1fr;
+                }
+            }
+        </style>
+    </head>
+    <body>
+        <h1>EventBook Client</h1>
 
-    <div class="two-column">
-        <!-- Submit Event Form -->
+        <div class="two-column">
+            <!-- Submit Event Form -->
+            <div class="container">
+                <h2>Submit Event</h2>
+                <form id="eventForm">
+                    <div class="form-group">
+                        <label for="eventType">Event Type:</label>
+                        <select id="eventType">
+                            <option value="UserCreated">UserCreated</option>
+                            <option value="UserUpdated">UserUpdated</option>
+                            <option value="UserDeleted">UserDeleted</option>
+                            <option value="OrderCreated">OrderCreated</option>
+                            <option value="OrderShipped">OrderShipped</option>
+                            <option value="Custom">Custom (enter below)</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="customEventType">Custom Event Type:</label>
+                        <input
+                            type="text"
+                            id="customEventType"
+                            placeholder="Enter custom event type"
+                            disabled
+                        />
+                    </div>
+
+                    <div class="form-group">
+                        <label for="aggregateId">Aggregate ID:</label>
+                        <input
+                            type="text"
+                            id="aggregateId"
+                            placeholder="e.g., user-123, order-456"
+                            required
+                        />
+                    </div>
+
+                    <div class="form-group">
+                        <label for="payload">Payload (JSON):</label>
+                        <textarea
+                            id="payload"
+                            rows="6"
+                            placeholder='{"name": "John Doe", "email": "john@example.com"}'
+                            required
+                        ></textarea>
+                    </div>
+
+                    <button type="submit">Submit Event</button>
+                    <button type="button" onclick="fillSampleData()">
+                        Fill Sample Data
+                    </button>
+                </form>
+
+                <div id="submitStatus"></div>
+            </div>
+
+            <!-- Health Check -->
+            <div class="container">
+                <h2>Server Status</h2>
+                <button onclick="checkHealth()">Check Health</button>
+                <div id="healthStatus"></div>
+            </div>
+        </div>
+
+        <!-- Events Display -->
         <div class="container">
-            <h2>Submit Event</h2>
-            <form id="eventForm">
-                <div class="form-group">
-                    <label for="eventType">Event Type:</label>
-                    <select id="eventType">
-                        <option value="UserCreated">UserCreated</option>
-                        <option value="UserUpdated">UserUpdated</option>
-                        <option value="UserDeleted">UserDeleted</option>
-                        <option value="OrderCreated">OrderCreated</option>
-                        <option value="OrderShipped">OrderShipped</option>
-                        <option value="Custom">Custom (enter below)</option>
-                    </select>
-                </div>
+            <h2>Events (Raw Event Log)</h2>
+            <div style="margin-bottom: 15px">
+                <button onclick="fetchEvents()">Fetch All Events</button>
+                <input
+                    type="text"
+                    id="filterAggregateId"
+                    placeholder="Filter by aggregate ID"
+                    style="width: 200px; display: inline-block; margin: 0 10px"
+                />
+                <button onclick="fetchEventsByAggregate()">
+                    Filter Events
+                </button>
+                <button onclick="clearEvents()">Clear</button>
+            </div>
 
-                <div class="form-group">
-                    <label for="customEventType">Custom Event Type:</label>
-                    <input type="text" id="customEventType" placeholder="Enter custom event type" disabled>
-                </div>
-
-                <div class="form-group">
-                    <label for="aggregateId">Aggregate ID:</label>
-                    <input type="text" id="aggregateId" placeholder="e.g., user-123, order-456" required>
-                </div>
-
-                <div class="form-group">
-                    <label for="payload">Payload (JSON):</label>
-                    <textarea id="payload" rows="6" placeholder='{"name": "John Doe", "email": "john@example.com"}' required></textarea>
-                </div>
-
-                <button type="submit">Submit Event</button>
-                <button type="button" onclick="fillSampleData()">Fill Sample Data</button>
-            </form>
-
-            <div id="submitStatus"></div>
+            <div id="eventsList" class="events-list">
+                <p style="text-align: center; color: #666; padding: 20px">
+                    No events loaded. Click "Fetch All Events" to load events
+                    from the server.
+                </p>
+            </div>
         </div>
 
-        <!-- Health Check -->
+        <!-- Materialized Views -->
         <div class="container">
-            <h2>Server Status</h2>
-            <button onclick="checkHealth()">Check Health</button>
-            <div id="healthStatus"></div>
+            <h2>Materialized Views (Derived from Events)</h2>
+            <div style="margin-bottom: 15px">
+                <button onclick="fetchUsers()">Fetch Users</button>
+                <button onclick="rebuildProjections()">
+                    Rebuild Projections
+                </button>
+                <button onclick="clearUsers()">Clear</button>
+            </div>
+
+            <div id="usersList" class="events-list">
+                <p style="text-align: center; color: #666; padding: 20px">
+                    No users loaded. Click "Fetch Users" to load materialized
+                    user data.
+                </p>
+            </div>
+
+            <div id="projectionStatus"></div>
         </div>
-    </div>
 
-    <!-- Events Display -->
-    <div class="container">
-        <h2>Events</h2>
-        <div style="margin-bottom: 15px;">
-            <button onclick="fetchEvents()">Fetch All Events</button>
-            <input type="text" id="filterAggregateId" placeholder="Filter by aggregate ID" style="width: 200px; display: inline-block; margin: 0 10px;">
-            <button onclick="fetchEventsByAggregate()">Filter Events</button>
-            <button onclick="clearEvents()">Clear</button>
-        </div>
+        <script>
+            const SERVER_URL = "http://localhost:3000";
 
-        <div id="eventsList" class="events-list">
-            <p style="text-align: center; color: #666; padding: 20px;">No events loaded. Click "Fetch All Events" to load events from the server.</p>
-        </div>
-    </div>
-
-    <script>
-        const SERVER_URL = 'http://localhost:3000';
-
-        // Enable custom event type input when "Custom" is selected
-        document.getElementById('eventType').addEventListener('change', function() {
-            const customInput = document.getElementById('customEventType');
-            if (this.value === 'Custom') {
-                customInput.disabled = false;
-                customInput.required = true;
-            } else {
-                customInput.disabled = true;
-                customInput.required = false;
-                customInput.value = '';
-            }
-        });
-
-        // Handle form submission
-        document.getElementById('eventForm').addEventListener('submit', async function(e) {
-            e.preventDefault();
-
-            const eventTypeSelect = document.getElementById('eventType').value;
-            const customEventType = document.getElementById('customEventType').value;
-            const eventType = eventTypeSelect === 'Custom' ? customEventType : eventTypeSelect;
-
-            const aggregateId = document.getElementById('aggregateId').value;
-            const payloadText = document.getElementById('payload').value;
-
-            if (!eventType || !aggregateId || !payloadText) {
-                showStatus('submitStatus', 'Please fill all required fields', 'error');
-                return;
-            }
-
-            let payload;
-            try {
-                payload = JSON.parse(payloadText);
-            } catch (e) {
-                showStatus('submitStatus', 'Invalid JSON in payload: ' + e.message, 'error');
-                return;
-            }
-
-            const eventData = {
-                event_type: eventType,
-                aggregate_id: aggregateId,
-                payload: payload
-            };
-
-            try {
-                const response = await fetch(`${SERVER_URL}/events`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(eventData)
+            // Enable custom event type input when "Custom" is selected
+            document
+                .getElementById("eventType")
+                .addEventListener("change", function () {
+                    const customInput =
+                        document.getElementById("customEventType");
+                    if (this.value === "Custom") {
+                        customInput.disabled = false;
+                        customInput.required = true;
+                    } else {
+                        customInput.disabled = true;
+                        customInput.required = false;
+                        customInput.value = "";
+                    }
                 });
 
-                const result = await response.json();
+            // Handle form submission
+            document
+                .getElementById("eventForm")
+                .addEventListener("submit", async function (e) {
+                    e.preventDefault();
 
-                if (response.ok) {
-                    showStatus('submitStatus', `Event submitted successfully! ID: ${result.event_id}, Version: ${result.version}`, 'success');
-                    // Auto-refresh events list
-                    setTimeout(fetchEvents, 500);
-                } else {
-                    showStatus('submitStatus', `Error: ${result.error || 'Unknown error'}`, 'error');
+                    const eventTypeSelect =
+                        document.getElementById("eventType").value;
+                    const customEventType =
+                        document.getElementById("customEventType").value;
+                    const eventType =
+                        eventTypeSelect === "Custom"
+                            ? customEventType
+                            : eventTypeSelect;
+
+                    const aggregateId =
+                        document.getElementById("aggregateId").value;
+                    const payloadText =
+                        document.getElementById("payload").value;
+
+                    if (!eventType || !aggregateId || !payloadText) {
+                        showStatus(
+                            "submitStatus",
+                            "Please fill all required fields",
+                            "error",
+                        );
+                        return;
+                    }
+
+                    let payload;
+                    try {
+                        payload = JSON.parse(payloadText);
+                    } catch (e) {
+                        showStatus(
+                            "submitStatus",
+                            "Invalid JSON in payload: " + e.message,
+                            "error",
+                        );
+                        return;
+                    }
+
+                    const eventData = {
+                        event_type: eventType,
+                        aggregate_id: aggregateId,
+                        payload: payload,
+                    };
+
+                    try {
+                        const response = await fetch(`${SERVER_URL}/events`, {
+                            method: "POST",
+                            headers: {
+                                "Content-Type": "application/json",
+                            },
+                            body: JSON.stringify(eventData),
+                        });
+
+                        const result = await response.json();
+
+                        if (response.ok) {
+                            showStatus(
+                                "submitStatus",
+                                `Event submitted successfully! ID: ${result.event_id}, Version: ${result.version}`,
+                                "success",
+                            );
+                            // Auto-refresh events list and users (to show materialization)
+                            setTimeout(() => {
+                                fetchEvents();
+                                fetchUsers();
+                            }, 500);
+                        } else {
+                            showStatus(
+                                "submitStatus",
+                                `Error: ${result.error || "Unknown error"}`,
+                                "error",
+                            );
+                        }
+                    } catch (error) {
+                        showStatus(
+                            "submitStatus",
+                            `Network error: ${error.message}`,
+                            "error",
+                        );
+                    }
+                });
+
+            // Fill sample data
+            function fillSampleData() {
+                document.getElementById("eventType").value = "UserCreated";
+                document.getElementById("aggregateId").value =
+                    "user-" + Date.now();
+                document.getElementById("payload").value = JSON.stringify(
+                    {
+                        name: "John Doe",
+                        email: "john@example.com",
+                        created_at: new Date().toISOString(),
+                    },
+                    null,
+                    2,
+                );
+            }
+
+            // Check server health
+            async function checkHealth() {
+                try {
+                    const response = await fetch(`${SERVER_URL}/health`);
+                    const result = await response.json();
+
+                    if (response.ok) {
+                        showStatus(
+                            "healthStatus",
+                            `Server is healthy! Status: ${result.status}, Timestamp: ${new Date(result.timestamp * 1000).toLocaleString()}`,
+                            "success",
+                        );
+                    } else {
+                        showStatus(
+                            "healthStatus",
+                            "Server health check failed",
+                            "error",
+                        );
+                    }
+                } catch (error) {
+                    showStatus(
+                        "healthStatus",
+                        `Cannot connect to server: ${error.message}`,
+                        "error",
+                    );
                 }
-            } catch (error) {
-                showStatus('submitStatus', `Network error: ${error.message}`, 'error');
             }
-        });
 
-        // Fill sample data
-        function fillSampleData() {
-            document.getElementById('eventType').value = 'UserCreated';
-            document.getElementById('aggregateId').value = 'user-' + Date.now();
-            document.getElementById('payload').value = JSON.stringify({
-                name: "John Doe",
-                email: "john@example.com",
-                created_at: new Date().toISOString()
-            }, null, 2);
-        }
+            // Fetch all events
+            async function fetchEvents() {
+                try {
+                    const response = await fetch(`${SERVER_URL}/events`);
+                    const result = await response.json();
 
-        // Check server health
-        async function checkHealth() {
-            try {
-                const response = await fetch(`${SERVER_URL}/health`);
-                const result = await response.json();
-
-                if (response.ok) {
-                    showStatus('healthStatus', `Server is healthy! Status: ${result.status}, Timestamp: ${new Date(result.timestamp * 1000).toLocaleString()}`, 'success');
-                } else {
-                    showStatus('healthStatus', 'Server health check failed', 'error');
+                    if (response.ok) {
+                        displayEvents(result.events);
+                    } else {
+                        showStatus(
+                            "eventsList",
+                            `Error fetching events: ${result.error || "Unknown error"}`,
+                            "error",
+                        );
+                    }
+                } catch (error) {
+                    document.getElementById("eventsList").innerHTML =
+                        `<div class="status error">Network error: ${error.message}</div>`;
                 }
-            } catch (error) {
-                showStatus('healthStatus', `Cannot connect to server: ${error.message}`, 'error');
             }
-        }
 
-        // Fetch all events
-        async function fetchEvents() {
-            try {
-                const response = await fetch(`${SERVER_URL}/events`);
-                const result = await response.json();
-
-                if (response.ok) {
-                    displayEvents(result.events);
-                } else {
-                    showStatus('eventsList', `Error fetching events: ${result.error || 'Unknown error'}`, 'error');
+            // Fetch events by aggregate
+            async function fetchEventsByAggregate() {
+                const aggregateId = document
+                    .getElementById("filterAggregateId")
+                    .value.trim();
+                if (!aggregateId) {
+                    alert("Please enter an aggregate ID to filter by");
+                    return;
                 }
-            } catch (error) {
-                document.getElementById('eventsList').innerHTML = `<div class="status error">Network error: ${error.message}</div>`;
-            }
-        }
 
-        // Fetch events by aggregate
-        async function fetchEventsByAggregate() {
-            const aggregateId = document.getElementById('filterAggregateId').value.trim();
-            if (!aggregateId) {
-                alert('Please enter an aggregate ID to filter by');
-                return;
-            }
+                try {
+                    const response = await fetch(
+                        `${SERVER_URL}/events?aggregate_id=${encodeURIComponent(aggregateId)}`,
+                    );
+                    const result = await response.json();
 
-            try {
-                const response = await fetch(`${SERVER_URL}/events?aggregate_id=${encodeURIComponent(aggregateId)}`);
-                const result = await response.json();
-
-                if (response.ok) {
-                    displayEvents(result.events);
-                } else {
-                    showStatus('eventsList', `Error fetching events: ${result.error || 'Unknown error'}`, 'error');
+                    if (response.ok) {
+                        displayEvents(result.events);
+                    } else {
+                        showStatus(
+                            "eventsList",
+                            `Error fetching events: ${result.error || "Unknown error"}`,
+                            "error",
+                        );
+                    }
+                } catch (error) {
+                    document.getElementById("eventsList").innerHTML =
+                        `<div class="status error">Network error: ${error.message}</div>`;
                 }
-            } catch (error) {
-                document.getElementById('eventsList').innerHTML = `<div class="status error">Network error: ${error.message}</div>`;
-            }
-        }
-
-        // Display events
-        function displayEvents(events) {
-            const eventsList = document.getElementById('eventsList');
-
-            if (!events || events.length === 0) {
-                eventsList.innerHTML = '<p style="text-align: center; color: #666; padding: 20px;">No events found.</p>';
-                return;
             }
 
-            const eventsHtml = events.map(event => `
+            // Display events
+            function displayEvents(events) {
+                const eventsList = document.getElementById("eventsList");
+
+                if (!events || events.length === 0) {
+                    eventsList.innerHTML =
+                        '<p style="text-align: center; color: #666; padding: 20px;">No events found.</p>';
+                    return;
+                }
+
+                const eventsHtml = events
+                    .map(
+                        (event) => `
                 <div class="event-item">
                     <div class="event-header">
                         <span class="event-type">${event.event_type}</span>
@@ -348,33 +467,133 @@
                     <div><strong>Timestamp:</strong> ${new Date(event.timestamp * 1000).toLocaleString()}</div>
                     <div class="event-payload">${JSON.stringify(event.payload, null, 2)}</div>
                 </div>
-            `).join('');
+            `,
+                    )
+                    .join("");
 
-            eventsList.innerHTML = eventsHtml;
-        }
-
-        // Clear events display
-        function clearEvents() {
-            document.getElementById('eventsList').innerHTML = '<p style="text-align: center; color: #666; padding: 20px;">Events cleared. Click "Fetch All Events" to reload.</p>';
-        }
-
-        // Show status messages
-        function showStatus(elementId, message, type) {
-            const element = document.getElementById(elementId);
-            element.innerHTML = `<div class="status ${type}">${message}</div>`;
-
-            // Auto-clear success messages after 5 seconds
-            if (type === 'success') {
-                setTimeout(() => {
-                    element.innerHTML = '';
-                }, 5000);
+                eventsList.innerHTML = eventsHtml;
             }
-        }
 
-        // Initialize with health check
-        window.addEventListener('load', function() {
-            checkHealth();
-        });
-    </script>
-</body>
+            // Clear events display
+            function clearEvents() {
+                document.getElementById("eventsList").innerHTML =
+                    '<p style="text-align: center; color: #666; padding: 20px;">Events cleared. Click "Fetch All Events" to reload.</p>';
+            }
+
+            // Show status messages
+            function showStatus(elementId, message, type) {
+                const element = document.getElementById(elementId);
+                element.innerHTML = `<div class="status ${type}">${message}</div>`;
+
+                // Auto-clear success messages after 5 seconds
+                if (type === "success") {
+                    setTimeout(() => {
+                        element.innerHTML = "";
+                    }, 5000);
+                }
+            }
+
+            // Fetch materialized users
+            async function fetchUsers() {
+                try {
+                    const response = await fetch(`${SERVER_URL}/users`);
+                    const users = await response.json();
+
+                    if (response.ok) {
+                        displayUsers(users);
+                    } else {
+                        showStatus(
+                            "usersList",
+                            `Error fetching users: ${users.error || "Unknown error"}`,
+                            "error",
+                        );
+                    }
+                } catch (error) {
+                    document.getElementById("usersList").innerHTML =
+                        `<div class="status error">Network error: ${error.message}</div>`;
+                }
+            }
+
+            // Rebuild projections on server
+            async function rebuildProjections() {
+                try {
+                    const response = await fetch(
+                        `${SERVER_URL}/projections/rebuild`,
+                        {
+                            method: "POST",
+                            headers: {
+                                "Content-Type": "application/json",
+                            },
+                        },
+                    );
+
+                    const result = await response.json();
+
+                    if (response.ok) {
+                        showStatus(
+                            "projectionStatus",
+                            `Projections rebuilt! Processed ${result.events_processed} events, ${result.user_count} users materialized.`,
+                            "success",
+                        );
+                        // Auto-refresh users list
+                        setTimeout(fetchUsers, 500);
+                    } else {
+                        showStatus(
+                            "projectionStatus",
+                            `Error rebuilding projections: ${result.error || "Unknown error"}`,
+                            "error",
+                        );
+                    }
+                } catch (error) {
+                    showStatus(
+                        "projectionStatus",
+                        `Network error: ${error.message}`,
+                        "error",
+                    );
+                }
+            }
+
+            // Display materialized users
+            function displayUsers(users) {
+                const usersList = document.getElementById("usersList");
+
+                if (!users || users.length === 0) {
+                    usersList.innerHTML =
+                        '<p style="text-align: center; color: #666; padding: 20px;">No users found.</p>';
+                    return;
+                }
+
+                const usersHtml = users
+                    .map(
+                        (user) => `
+                <div class="event-item">
+                    <div class="event-header">
+                        <span class="event-type">User</span>
+                        <span class="event-id">${user.active ? "Active" : "Inactive"} • ${user.id}</span>
+                    </div>
+                    <div><strong>Name:</strong> ${user.name}</div>
+                    <div><strong>Email:</strong> ${user.email}</div>
+                    <div><strong>Created:</strong> ${new Date(user.created_at * 1000).toLocaleString()}</div>
+                    <div><strong>Updated:</strong> ${new Date(user.updated_at * 1000).toLocaleString()}</div>
+                    ${user.created_at !== user.updated_at ? '<div style="color: #28a745; font-weight: bold;">📝 Modified from original</div>' : ""}
+                </div>
+            `,
+                    )
+                    .join("");
+
+                usersList.innerHTML = usersHtml;
+            }
+
+            // Clear users display
+            function clearUsers() {
+                document.getElementById("usersList").innerHTML =
+                    '<p style="text-align: center; color: #666; padding: 20px;">Users cleared. Click "Fetch Users" to reload.</p>';
+            }
+
+            // Initialize with health check
+            window.addEventListener("load", function () {
+                checkHealth();
+            });
+        </script>
+    </body>
 </html>

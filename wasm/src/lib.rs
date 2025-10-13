@@ -1,4 +1,6 @@
-use eventbook_core::{Event, EventBuilder, EventStore, InMemoryEventStore};
+use eventbook_core::{
+    Event, EventBuilder, EventStore, InMemoryEventStore, Projection, User, UserProjection,
+};
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
 use serde::{Deserialize, Serialize};
@@ -67,8 +69,10 @@ pub struct SyncResult {
 #[napi]
 pub struct EventBookClient {
     local_store: InMemoryEventStore,
+    user_projection: UserProjection,
     server_url: String,
     sync_enabled: bool,
+    last_sync_timestamp: i64,
 }
 
 #[napi]
@@ -77,8 +81,10 @@ impl EventBookClient {
     pub fn new(config: ClientConfig) -> Self {
         Self {
             local_store: InMemoryEventStore::new(),
+            user_projection: UserProjection::new(),
             server_url: config.server_url,
             sync_enabled: config.sync_enabled.unwrap_or(true),
+            last_sync_timestamp: 0,
         }
     }
 
@@ -111,6 +117,11 @@ impl EventBookClient {
         self.local_store
             .append_event(event.clone())
             .map_err(|e| Error::new(Status::InvalidArg, format!("Store error: {}", e)))?;
+
+        // Update projections
+        self.user_projection
+            .apply_new_events(&[event.clone()])
+            .map_err(|e| Error::new(Status::GenericFailure, format!("Projection error: {}", e)))?;
 
         Ok(event.into())
     }
@@ -167,6 +178,120 @@ impl EventBookClient {
     #[napi]
     pub fn clear_local_store(&mut self) {
         self.local_store = InMemoryEventStore::new();
+        self.user_projection = UserProjection::new();
+        self.last_sync_timestamp = 0;
+    }
+
+    /// Sync event log from server and rebuild projections
+    #[napi]
+    pub fn sync_event_log(&mut self) -> Result<SyncResult> {
+        if !self.sync_enabled {
+            return Ok(SyncResult {
+                events_pushed: 0,
+                events_pulled: 0,
+                success: false,
+                error: Some("Sync is disabled".to_string()),
+            });
+        }
+
+        // For now, do a full sync - pull all events from server
+        // In production, you'd want incremental sync based on timestamps
+        match self.fetch_events_from_server() {
+            Ok(events) => {
+                // Rebuild local store and projections from server events
+                let mut new_store = InMemoryEventStore::new();
+                let mut events_added = 0;
+
+                for event in &events {
+                    if let Ok(_) = new_store.append_event(event.clone()) {
+                        events_added += 1;
+                    }
+                }
+
+                // Rebuild projections from all events
+                let mut new_projection = UserProjection::new();
+                if let Err(e) = new_projection.rebuild_from_events(&events) {
+                    return Ok(SyncResult {
+                        events_pushed: 0,
+                        events_pulled: 0,
+                        success: false,
+                        error: Some(format!("Failed to rebuild projections: {}", e)),
+                    });
+                }
+
+                // Update local state
+                self.local_store = new_store;
+                self.user_projection = new_projection;
+                self.last_sync_timestamp = eventbook_core::current_timestamp();
+
+                Ok(SyncResult {
+                    events_pushed: 0, // TODO: Implement push for local events
+                    events_pulled: events_added,
+                    success: true,
+                    error: None,
+                })
+            }
+            Err(e) => Ok(SyncResult {
+                events_pushed: 0,
+                events_pulled: 0,
+                success: false,
+                error: Some(e.to_string()),
+            }),
+        }
+    }
+
+    /// Get materialized users from local projection
+    #[napi]
+    pub fn get_materialized_users(&self) -> Result<Vec<JsUser>> {
+        let active_users = self.user_projection.get_active_users();
+        Ok(active_users
+            .into_iter()
+            .map(|u| JsUser::from(u.clone()))
+            .collect())
+    }
+
+    /// Get a specific materialized user
+    #[napi]
+    pub fn get_materialized_user(&self, user_id: String) -> Option<JsUser> {
+        self.user_projection
+            .get_user(&user_id)
+            .map(|u| JsUser::from(u.clone()))
+    }
+
+    /// Get materialized user count
+    #[napi]
+    pub fn get_user_count(&self) -> u32 {
+        self.user_projection.user_count() as u32
+    }
+
+    /// Rebuild projections from local event log
+    #[napi]
+    pub fn rebuild_projections(&mut self) -> Result<u32> {
+        let events = self.local_store.get_all_events().map_err(|e| {
+            Error::new(
+                Status::GenericFailure,
+                format!("Failed to get events: {}", e),
+            )
+        })?;
+
+        self.user_projection
+            .rebuild_from_events(&events)
+            .map_err(|e| {
+                Error::new(
+                    Status::GenericFailure,
+                    format!("Failed to rebuild projections: {}", e),
+                )
+            })?;
+
+        Ok(events.len() as u32)
+    }
+
+    // Private helper to fetch events from server
+    fn fetch_events_from_server(&self) -> Result<Vec<Event>, String> {
+        // This is a placeholder for actual HTTP fetch implementation
+        // In a real implementation, you'd use web-sys to make HTTP requests
+        // For now, return empty vec as we can't easily do async HTTP in this context
+        Ok(Vec::new())
     }
 
     /// Get aggregates summary
@@ -198,6 +323,31 @@ impl EventBookClient {
         }
 
         Ok(aggregates.into_values().collect())
+    }
+}
+
+/// JavaScript-compatible User type
+#[napi(object)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JsUser {
+    pub id: String,
+    pub name: String,
+    pub email: String,
+    pub created_at: i64,
+    pub updated_at: i64,
+    pub active: bool,
+}
+
+impl From<User> for JsUser {
+    fn from(user: User) -> Self {
+        Self {
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            created_at: user.created_at,
+            updated_at: user.updated_at,
+            active: user.active,
+        }
     }
 }
 
@@ -259,6 +409,65 @@ pub fn create_sample_user_payload(name: String, email: String) -> Result<String>
             format!("Serialization error: {}", e),
         )
     })
+}
+
+/// Create a materializer test - demonstrate event replay
+#[napi]
+pub fn create_user_events_sample() -> Result<Vec<JsEvent>> {
+    let timestamp = eventbook_core::current_timestamp();
+    let user_id = format!("user-{}", timestamp);
+
+    let events = vec![
+        Event {
+            id: eventbook_core::generate_event_id(),
+            event_type: "UserCreated".to_string(),
+            aggregate_id: user_id.clone(),
+            payload: serde_json::json!({
+                "name": "Alice Smith",
+                "email": "alice@example.com"
+            }),
+            timestamp,
+            version: 1,
+        },
+        Event {
+            id: eventbook_core::generate_event_id(),
+            event_type: "UserUpdated".to_string(),
+            aggregate_id: user_id.clone(),
+            payload: serde_json::json!({
+                "name": "Alice Johnson",
+                "email": "alice.johnson@example.com"
+            }),
+            timestamp: timestamp + 1000,
+            version: 2,
+        },
+    ];
+
+    Ok(events.into_iter().map(JsEvent::from).collect())
+}
+
+/// Test materializer functionality with sample events
+#[napi]
+pub fn test_materializer_with_events(events: Vec<JsEvent>) -> Result<Vec<JsUser>> {
+    // Convert JS events back to core events
+    let core_events: Result<Vec<Event>, _> = events
+        .into_iter()
+        .map(|js_event| js_event.to_event())
+        .collect();
+
+    let core_events = core_events?;
+
+    // Create and populate projection
+    let mut projection = UserProjection::new();
+    projection.rebuild_from_events(&core_events).map_err(|e| {
+        Error::new(
+            Status::GenericFailure,
+            format!("Materialization failed: {}", e),
+        )
+    })?;
+
+    // Return materialized users
+    let users = projection.get_active_users();
+    Ok(users.into_iter().map(|u| JsUser::from(u.clone())).collect())
 }
 
 /// Create a sample event update payload for testing

@@ -6,7 +6,8 @@ use axum::{
     Router,
 };
 use eventbook_core::{
-    Event, EventBuilder, EventError, EventResult, EventStore, InMemoryEventStore,
+    Event, EventBuilder, EventError, EventResult, EventStore, InMemoryEventStore, Projection, User,
+    UserProjection,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -15,7 +16,20 @@ use tower_http::cors::CorsLayer;
 use tracing::{info, warn};
 
 /// App state shared across handlers
-pub type AppState = Arc<RwLock<InMemoryEventStore>>;
+#[derive(Clone)]
+pub struct AppState {
+    pub event_store: Arc<RwLock<InMemoryEventStore>>,
+    pub user_projection: Arc<RwLock<UserProjection>>,
+}
+
+impl AppState {
+    pub fn new() -> Self {
+        Self {
+            event_store: Arc::new(RwLock::new(InMemoryEventStore::new())),
+            user_projection: Arc::new(RwLock::new(UserProjection::new())),
+        }
+    }
+}
 
 /// Request/Response types for the API
 
@@ -71,13 +85,13 @@ fn event_error_to_response(err: EventError) -> (StatusCode, Json<ErrorResponse>)
 /// HTTP handlers
 
 pub async fn submit_event(
-    State(store): State<AppState>,
+    State(app_state): State<AppState>,
     Json(req): Json<SubmitEventRequest>,
 ) -> Result<Json<SubmitEventResponse>, (StatusCode, Json<ErrorResponse>)> {
-    let mut store = store.write().await;
+    let mut event_store = app_state.event_store.write().await;
 
     // Get the next version for this aggregate
-    let current_version = store.get_latest_version(&req.aggregate_id);
+    let current_version = event_store.get_latest_version(&req.aggregate_id);
     let next_version = current_version + 1;
 
     // Build the event
@@ -93,7 +107,15 @@ pub async fn submit_event(
     let version = event.version;
 
     // Store the event
-    store.append_event(event).map_err(event_error_to_response)?;
+    event_store
+        .append_event(event.clone())
+        .map_err(event_error_to_response)?;
+
+    // Update projections
+    let mut user_projection = app_state.user_projection.write().await;
+    if let Err(e) = user_projection.apply_new_events(&[event]) {
+        warn!("Failed to update user projection: {}", e);
+    }
 
     info!("Event {} submitted successfully", event_id);
 
@@ -101,14 +123,14 @@ pub async fn submit_event(
 }
 
 pub async fn get_events(
-    State(store): State<AppState>,
+    State(app_state): State<AppState>,
     Query(query): Query<GetEventsQuery>,
 ) -> Result<Json<GetEventsResponse>, (StatusCode, Json<ErrorResponse>)> {
-    let store = store.read().await;
+    let event_store = app_state.event_store.read().await;
 
     let events = match query.aggregate_id.as_ref() {
-        Some(aggregate_id) => store.get_events(aggregate_id),
-        None => store.get_all_events(),
+        Some(aggregate_id) => event_store.get_events(aggregate_id),
+        None => event_store.get_all_events(),
     }
     .map_err(|e| {
         (
@@ -140,12 +162,12 @@ pub async fn get_events(
 }
 
 pub async fn get_aggregate_info(
-    State(store): State<AppState>,
+    State(app_state): State<AppState>,
     Path(aggregate_id): Path<String>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
-    let store = store.read().await;
+    let event_store = app_state.event_store.read().await;
 
-    let events = store.get_events(&aggregate_id).map_err(|e| {
+    let events = event_store.get_events(&aggregate_id).map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse {
@@ -155,7 +177,7 @@ pub async fn get_aggregate_info(
         )
     })?;
 
-    let latest_version = store.get_latest_version(&aggregate_id);
+    let latest_version = event_store.get_latest_version(&aggregate_id);
 
     Ok(Json(serde_json::json!({
         "aggregate_id": aggregate_id,
@@ -163,6 +185,70 @@ pub async fn get_aggregate_info(
         "event_count": events.len(),
         "first_event_timestamp": events.first().map(|e| e.timestamp),
         "last_event_timestamp": events.last().map(|e| e.timestamp),
+    })))
+}
+
+pub async fn get_users(
+    State(app_state): State<AppState>,
+) -> Result<Json<Vec<User>>, (StatusCode, Json<ErrorResponse>)> {
+    let user_projection = app_state.user_projection.read().await;
+    let users = user_projection
+        .get_active_users()
+        .into_iter()
+        .cloned()
+        .collect();
+    Ok(Json(users))
+}
+
+pub async fn get_user(
+    State(app_state): State<AppState>,
+    Path(user_id): Path<String>,
+) -> Result<Json<User>, (StatusCode, Json<ErrorResponse>)> {
+    let user_projection = app_state.user_projection.read().await;
+
+    match user_projection.get_user(&user_id) {
+        Some(user) => Ok(Json(user.clone())),
+        None => Err((
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                error: format!("User {} not found", user_id),
+                code: "USER_NOT_FOUND".to_string(),
+            }),
+        )),
+    }
+}
+
+pub async fn rebuild_projections(
+    State(app_state): State<AppState>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    let event_store = app_state.event_store.read().await;
+    let events = event_store.get_all_events().map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: e.to_string(),
+                code: "EVENT_RETRIEVAL_FAILED".to_string(),
+            }),
+        )
+    })?;
+
+    let mut user_projection = app_state.user_projection.write().await;
+    user_projection.rebuild_from_events(&events).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: e.to_string(),
+                code: "PROJECTION_REBUILD_FAILED".to_string(),
+            }),
+        )
+    })?;
+
+    info!("Projections rebuilt from {} events", events.len());
+
+    Ok(Json(serde_json::json!({
+        "success": true,
+        "events_processed": events.len(),
+        "user_count": user_projection.user_count()
     })))
 }
 
@@ -178,15 +264,18 @@ pub async fn serve_client() -> Html<&'static str> {
 }
 
 /// Create the application router
-pub fn create_app(store: AppState) -> Router {
+pub fn create_app(app_state: AppState) -> Router {
     Router::new()
         .route("/", get(serve_client))
         .route("/health", get(health_check))
         .route("/events", post(submit_event))
         .route("/events", get(get_events))
         .route("/aggregates/{aggregate_id}", get(get_aggregate_info))
+        .route("/users", get(get_users))
+        .route("/users/{user_id}", get(get_user))
+        .route("/projections/rebuild", post(rebuild_projections))
         .layer(CorsLayer::permissive())
-        .with_state(store)
+        .with_state(app_state)
 }
 
 /// Start the server
@@ -198,9 +287,8 @@ pub async fn start_server(port: u16) -> anyhow::Result<()> {
 
     info!("Initializing EventBook server...");
 
-    // Create the event store (in-memory for now)
-    let store = InMemoryEventStore::new();
-    let app_state = Arc::new(RwLock::new(store));
+    // Create the app state with event store and projections
+    let app_state = AppState::new();
 
     info!("Event store initialized (in-memory)");
 
