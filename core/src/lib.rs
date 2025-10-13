@@ -1,6 +1,9 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+pub mod document;
+pub mod fractional_index;
+
 /// Core event structure for event sourcing
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Event {
@@ -433,6 +436,22 @@ pub fn validate_event(event: &Event) -> EventResult<()> {
     }
     Ok(())
 }
+
+// Re-export document types
+pub use document::{
+    create_cell_event, create_document_event, move_cell_event, update_cell_source_event, Cell,
+    CellOutput, CellType, Document, DocumentMaterializer, DocumentMetadata, DocumentProjection,
+    DocumentProjectionState, ExecutionState, KernelSpec, LanguageInfo, MediaRepresentation,
+    OutputType, RuntimeSession, RuntimeStatus,
+};
+
+// Re-export fractional index utilities
+pub use fractional_index::{
+    after as fractional_after, before as fractional_before, between as fractional_between,
+    generate_sequence as fractional_generate_sequence, initial as fractional_initial,
+    is_valid_order as fractional_is_valid_order, validate_index as fractional_validate_index,
+    FractionalIndexError,
+};
 
 #[cfg(test)]
 mod tests {

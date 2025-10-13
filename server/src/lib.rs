@@ -6,10 +6,10 @@ use axum::{
     Router,
 };
 use eventbook_core::{
-    Event, EventBuilder, EventError, EventResult, EventStore, InMemoryEventStore, Projection, User,
-    UserProjection,
+    DocumentProjection, Event, EventBuilder, EventError, EventStore, InMemoryEventStore, Projection,
 };
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tower_http::cors::CorsLayer;
@@ -18,16 +18,32 @@ use tracing::{info, warn};
 /// App state shared across handlers
 #[derive(Clone)]
 pub struct AppState {
-    pub event_store: Arc<RwLock<InMemoryEventStore>>,
-    pub user_projection: Arc<RwLock<UserProjection>>,
+    /// Map of store_id -> event store
+    pub stores: Arc<RwLock<HashMap<String, InMemoryEventStore>>>,
+    /// Map of store_id -> document projection
+    pub projections: Arc<RwLock<HashMap<String, DocumentProjection>>>,
 }
 
 impl AppState {
     pub fn new() -> Self {
         Self {
-            event_store: Arc::new(RwLock::new(InMemoryEventStore::new())),
-            user_projection: Arc::new(RwLock::new(UserProjection::new())),
+            stores: Arc::new(RwLock::new(HashMap::new())),
+            projections: Arc::new(RwLock::new(HashMap::new())),
         }
+    }
+
+    /// Ensure a store exists for the given store_id
+    async fn ensure_store_exists(&self, store_id: &str) {
+        let mut stores = self.stores.write().await;
+        let mut projections = self.projections.write().await;
+
+        stores
+            .entry(store_id.to_string())
+            .or_insert_with(InMemoryEventStore::new);
+
+        projections
+            .entry(store_id.to_string())
+            .or_insert_with(DocumentProjection::new);
     }
 }
 
@@ -36,7 +52,6 @@ impl AppState {
 #[derive(Debug, Deserialize)]
 pub struct SubmitEventRequest {
     pub event_type: String,
-    pub aggregate_id: String,
     pub payload: serde_json::Value,
 }
 
@@ -48,15 +63,25 @@ pub struct SubmitEventResponse {
 
 #[derive(Debug, Deserialize)]
 pub struct GetEventsQuery {
-    pub aggregate_id: Option<String>,
     pub limit: Option<u32>,
     pub offset: Option<u32>,
+    pub since_timestamp: Option<i64>,
 }
 
 #[derive(Debug, Serialize)]
 pub struct GetEventsResponse {
     pub events: Vec<Event>,
     pub total_count: usize,
+    pub store_id: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct StoreInfoResponse {
+    pub store_id: String,
+    pub event_count: usize,
+    pub latest_version: i64,
+    pub first_event_timestamp: Option<i64>,
+    pub last_event_timestamp: Option<i64>,
 }
 
 #[derive(Debug, Serialize)]
@@ -84,20 +109,28 @@ fn event_error_to_response(err: EventError) -> (StatusCode, Json<ErrorResponse>)
 
 /// HTTP handlers
 
+/// Submit an event to a store
 pub async fn submit_event(
     State(app_state): State<AppState>,
+    Path(store_id): Path<String>,
     Json(req): Json<SubmitEventRequest>,
 ) -> Result<Json<SubmitEventResponse>, (StatusCode, Json<ErrorResponse>)> {
-    let mut event_store = app_state.event_store.write().await;
+    app_state.ensure_store_exists(&store_id).await;
 
-    // Get the next version for this aggregate
-    let current_version = event_store.get_latest_version(&req.aggregate_id);
+    let mut stores = app_state.stores.write().await;
+    let mut projections = app_state.projections.write().await;
+
+    let event_store = stores.get_mut(&store_id).unwrap();
+    let projection = projections.get_mut(&store_id).unwrap();
+
+    // Get the next version for this store
+    let current_version = event_store.get_latest_version(&store_id);
     let next_version = current_version + 1;
 
     // Build the event
     let event = EventBuilder::new()
         .event_type(req.event_type)
-        .aggregate_id(req.aggregate_id)
+        .aggregate_id(store_id.clone()) // Use store_id as aggregate_id
         .payload(req.payload)
         .map_err(event_error_to_response)?
         .build(next_version)
@@ -111,28 +144,31 @@ pub async fn submit_event(
         .append_event(event.clone())
         .map_err(event_error_to_response)?;
 
-    // Update projections
-    let mut user_projection = app_state.user_projection.write().await;
-    if let Err(e) = user_projection.apply_new_events(&[event]) {
-        warn!("Failed to update user projection: {}", e);
+    // Update projection
+    if let Err(e) = projection.apply_new_events(&[event]) {
+        warn!("Failed to update projection for store {}: {}", store_id, e);
     }
 
-    info!("Event {} submitted successfully", event_id);
+    info!(
+        "Event {} submitted to store {} successfully",
+        event_id, store_id
+    );
 
     Ok(Json(SubmitEventResponse { event_id, version }))
 }
 
+/// Get events from a store
 pub async fn get_events(
     State(app_state): State<AppState>,
+    Path(store_id): Path<String>,
     Query(query): Query<GetEventsQuery>,
 ) -> Result<Json<GetEventsResponse>, (StatusCode, Json<ErrorResponse>)> {
-    let event_store = app_state.event_store.read().await;
+    app_state.ensure_store_exists(&store_id).await;
 
-    let events = match query.aggregate_id.as_ref() {
-        Some(aggregate_id) => event_store.get_events(aggregate_id),
-        None => event_store.get_all_events(),
-    }
-    .map_err(|e| {
+    let stores = app_state.stores.read().await;
+    let event_store = stores.get(&store_id).unwrap();
+
+    let mut events = event_store.get_events(&store_id).map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse {
@@ -142,32 +178,40 @@ pub async fn get_events(
         )
     })?;
 
+    // Filter by timestamp if requested
+    if let Some(since) = query.since_timestamp {
+        events.retain(|e| e.timestamp > since);
+    }
+
     let total_count = events.len();
 
-    // Apply client-side pagination if needed
-    let events = if let (Some(limit), Some(offset)) = (query.limit, query.offset) {
-        events
+    // Apply pagination if requested
+    if let (Some(limit), Some(offset)) = (query.limit, query.offset) {
+        events = events
             .into_iter()
             .skip(offset as usize)
             .take(limit as usize)
-            .collect()
-    } else {
-        events
-    };
+            .collect();
+    }
 
     Ok(Json(GetEventsResponse {
         events,
         total_count,
+        store_id,
     }))
 }
 
-pub async fn get_aggregate_info(
+/// Get store information
+pub async fn get_store_info(
     State(app_state): State<AppState>,
-    Path(aggregate_id): Path<String>,
-) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
-    let event_store = app_state.event_store.read().await;
+    Path(store_id): Path<String>,
+) -> Result<Json<StoreInfoResponse>, (StatusCode, Json<ErrorResponse>)> {
+    app_state.ensure_store_exists(&store_id).await;
 
-    let events = event_store.get_events(&aggregate_id).map_err(|e| {
+    let stores = app_state.stores.read().await;
+    let event_store = stores.get(&store_id).unwrap();
+
+    let events = event_store.get_events(&store_id).map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse {
@@ -177,81 +221,27 @@ pub async fn get_aggregate_info(
         )
     })?;
 
-    let latest_version = event_store.get_latest_version(&aggregate_id);
+    let latest_version = event_store.get_latest_version(&store_id);
 
-    Ok(Json(serde_json::json!({
-        "aggregate_id": aggregate_id,
-        "latest_version": latest_version,
-        "event_count": events.len(),
-        "first_event_timestamp": events.first().map(|e| e.timestamp),
-        "last_event_timestamp": events.last().map(|e| e.timestamp),
-    })))
+    Ok(Json(StoreInfoResponse {
+        store_id,
+        event_count: events.len(),
+        latest_version,
+        first_event_timestamp: events.first().map(|e| e.timestamp),
+        last_event_timestamp: events.last().map(|e| e.timestamp),
+    }))
 }
 
-pub async fn get_users(
+/// List all stores
+pub async fn list_stores(
     State(app_state): State<AppState>,
-) -> Result<Json<Vec<User>>, (StatusCode, Json<ErrorResponse>)> {
-    let user_projection = app_state.user_projection.read().await;
-    let users = user_projection
-        .get_active_users()
-        .into_iter()
-        .cloned()
-        .collect();
-    Ok(Json(users))
+) -> Result<Json<Vec<String>>, (StatusCode, Json<ErrorResponse>)> {
+    let stores = app_state.stores.read().await;
+    let store_ids: Vec<String> = stores.keys().cloned().collect();
+    Ok(Json(store_ids))
 }
 
-pub async fn get_user(
-    State(app_state): State<AppState>,
-    Path(user_id): Path<String>,
-) -> Result<Json<User>, (StatusCode, Json<ErrorResponse>)> {
-    let user_projection = app_state.user_projection.read().await;
-
-    match user_projection.get_user(&user_id) {
-        Some(user) => Ok(Json(user.clone())),
-        None => Err((
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse {
-                error: format!("User {} not found", user_id),
-                code: "USER_NOT_FOUND".to_string(),
-            }),
-        )),
-    }
-}
-
-pub async fn rebuild_projections(
-    State(app_state): State<AppState>,
-) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
-    let event_store = app_state.event_store.read().await;
-    let events = event_store.get_all_events().map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: e.to_string(),
-                code: "EVENT_RETRIEVAL_FAILED".to_string(),
-            }),
-        )
-    })?;
-
-    let mut user_projection = app_state.user_projection.write().await;
-    user_projection.rebuild_from_events(&events).map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: e.to_string(),
-                code: "PROJECTION_REBUILD_FAILED".to_string(),
-            }),
-        )
-    })?;
-
-    info!("Projections rebuilt from {} events", events.len());
-
-    Ok(Json(serde_json::json!({
-        "success": true,
-        "events_processed": events.len(),
-        "user_count": user_projection.user_count()
-    })))
-}
-
+/// Health check
 pub async fn health_check() -> Json<serde_json::Value> {
     Json(serde_json::json!({
         "status": "healthy",
@@ -259,6 +249,7 @@ pub async fn health_check() -> Json<serde_json::Value> {
     }))
 }
 
+/// Serve the client HTML
 pub async fn serve_client() -> Html<&'static str> {
     Html(include_str!("../../client.html"))
 }
@@ -268,12 +259,10 @@ pub fn create_app(app_state: AppState) -> Router {
     Router::new()
         .route("/", get(serve_client))
         .route("/health", get(health_check))
-        .route("/events", post(submit_event))
-        .route("/events", get(get_events))
-        .route("/aggregates/{aggregate_id}", get(get_aggregate_info))
-        .route("/users", get(get_users))
-        .route("/users/{user_id}", get(get_user))
-        .route("/projections/rebuild", post(rebuild_projections))
+        .route("/stores", get(list_stores))
+        .route("/stores/{store_id}/events", post(submit_event))
+        .route("/stores/{store_id}/events", get(get_events))
+        .route("/stores/{store_id}", get(get_store_info))
         .layer(CorsLayer::permissive())
         .with_state(app_state)
 }
@@ -287,10 +276,10 @@ pub async fn start_server(port: u16) -> anyhow::Result<()> {
 
     info!("Initializing EventBook server...");
 
-    // Create the app state with event store and projections
+    // Create the app state
     let app_state = AppState::new();
 
-    info!("Event store initialized (in-memory)");
+    info!("Event stores initialized (in-memory)");
 
     // Create the app
     let app = create_app(app_state);
