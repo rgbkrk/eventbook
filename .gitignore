@@ -1,2 +1,21 @@
 /target
 eventbook.db*
+
+# Node.js / Web Client
+node_modules/
+web-client/node_modules/
+web-client/dist/
+web-client/.env
+web-client/.env.local
+web-client/.env.production
+web-client/.env.development
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

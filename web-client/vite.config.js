@@ -1,48 +1,35 @@
-import { defineConfig } from 'vite'
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+import { resolve } from "path";
+import wasm from "vite-plugin-wasm";
+import topLevelAwait from "vite-plugin-top-level-await";
 
+// https://vitejs.dev/config/
 export default defineConfig({
+  plugins: [react(), wasm(), topLevelAwait()],
+  resolve: {
+    alias: {
+      "@": resolve(__dirname, "./src"),
+      "@/components": resolve(__dirname, "./src/components"),
+      "@/lib": resolve(__dirname, "./src/lib"),
+      "@/hooks": resolve(__dirname, "./src/hooks"),
+      "@/types": resolve(__dirname, "./src/types"),
+    },
+  },
   server: {
-    port: 5173,
+    port: 3001,
     proxy: {
-      // Proxy API calls to our Rust server
-      '/api': {
-        target: 'http://localhost:3000',
+      "/stores": {
+        target: "http://localhost:3000",
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api/, '')
-      }
-    }
+      },
+      "/health": {
+        target: "http://localhost:3000",
+        changeOrigin: true,
+      },
+    },
   },
-
   build: {
-    target: 'esnext',
-    rollupOptions: {
-      external: [],
-    }
+    sourcemap: true,
   },
-
-  optimizeDeps: {
-    exclude: ['eventbook-wasm']
-  },
-
-  // Enable WASM support
-  assetsInclude: ['**/*.wasm'],
-
-  define: {
-    global: 'globalThis',
-  },
-
-  // Handle WASM files
-  plugins: [
-    {
-      name: 'wasm-pack-plugin',
-      configureServer(server) {
-        server.middlewares.use('/wasm', (req, res, next) => {
-          if (req.url.endsWith('.wasm')) {
-            res.setHeader('Content-Type', 'application/wasm');
-          }
-          next();
-        });
-      }
-    }
-  ]
-})
+});
