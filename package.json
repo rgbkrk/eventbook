@@ -1,0 +1,34 @@
+{
+  "name": "eventbook",
+  "version": "0.1.0",
+  "description": "Event sourcing library with materializers built on Turso",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "scripts": {
+    "build": "napi build --platform --release --target wasm32-wasip1-threads --features browser",
+    "build:debug": "napi build --platform --target wasm32-wasip1-threads --features browser",
+    "test": "node test.js"
+  },
+  "napi": {
+    "name": "eventbook",
+    "targets": ["wasm32-wasip1-threads"]
+  },
+  "dependencies": {
+    "@napi-rs/wasm-runtime": "^0.2.4"
+  },
+  "devDependencies": {
+    "@napi-rs/cli": "^3.0.0"
+  },
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "*.wasm"
+  ],
+  "keywords": ["event-sourcing", "turso", "wasm", "database"],
+  "author": "",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": ""
+  }
+}

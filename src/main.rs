@@ -1,6 +1,6 @@
 use turso::Builder;
 
-#[tokio::main]
+#[tokio::main(flavor = "current_thread")]
 async fn main() -> turso::Result<()> {
     // Create a local SQLite database connection
     let db = Builder::new_local(":memory:").build().await?;
