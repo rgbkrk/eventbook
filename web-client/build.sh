@@ -19,7 +19,7 @@ fi
 # Build WASM module
 echo "🔨 Building WASM module..."
 cd ../wasm
-wasm-pack build --target web --out-dir ../web-client/src/wasm
+wasm-pack build --target web --out-dir ../web-client/src/wasm --dev
 
 # Go back to web-client directory
 cd ../web-client

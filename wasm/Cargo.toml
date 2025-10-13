@@ -9,13 +9,12 @@ crate-type = ["cdylib"]
 
 [dependencies]
 eventbook-core = { path = "../core" }
-napi = { version = "3.1.3", default-features = false, features = ["napi6"] }
-napi-derive = { version = "3.1.1", default-features = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-turso = { workspace = true }
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
+getrandom = { version = "0.2", features = ["js"] }
+js-sys = "0.3"
 
 [dependencies.web-sys]
 version = "0.3"
@@ -29,7 +28,8 @@ features = [
 ]
 
 [features]
-browser = []
+default = ["console_error_panic_hook"]
 
-[package.metadata.napi]
-targets = ["wasm32-wasip1-threads"]
+[dependencies.console_error_panic_hook]
+version = "0.1.7"
+optional = true

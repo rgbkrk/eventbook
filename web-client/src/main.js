@@ -1,7 +1,6 @@
 // EventBook WASM Event Sourcing Demo
 import init, {
   EventBookClient,
-  create_client_config,
   create_sample_user_payload,
   current_timestamp,
   generate_event_id,
@@ -21,8 +20,7 @@ class EventBookApp {
       await init();
 
       // Create EventBook client with server config
-      const config = create_client_config(this.serverUrl);
-      this.client = new EventBookClient(config);
+      this.client = new EventBookClient(this.serverUrl);
 
       this.wasmInitialized = true;
       this.updateWasmStatus("success", "✅ WASM module loaded successfully");
