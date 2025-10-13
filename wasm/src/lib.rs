@@ -393,7 +393,9 @@ async fn fetch_events_from_server(server_url: &str) -> Result<Vec<Event>, String
     let window = web_sys::window().ok_or("No global window object")?;
 
     let url = format!("{}/events", server_url);
-    let mut opts = RequestInit::new();
+    log!("Fetching events from: {}", url);
+
+    let opts = RequestInit::new();
     opts.set_method("GET");
 
     let request =
@@ -413,7 +415,8 @@ async fn fetch_events_from_server(server_url: &str) -> Result<Vec<Event>, String
         .map_err(|_| "Response conversion failed")?;
 
     if !resp.ok() {
-        return Err(format!("HTTP error: {}", resp.status()));
+        log!("HTTP error: {} for URL: {}", resp.status(), url);
+        return Err(format!("HTTP error: {} for URL: {}", resp.status(), url));
     }
 
     let text = JsFuture::from(resp.text().map_err(|_| "Failed to get response text")?)
@@ -421,6 +424,14 @@ async fn fetch_events_from_server(server_url: &str) -> Result<Vec<Event>, String
         .map_err(|_| "Failed to read response text")?;
 
     let response_text = text.as_string().unwrap_or_default();
+    log!(
+        "Server response: {}",
+        if response_text.len() > 200 {
+            format!("{}...", &response_text[..200])
+        } else {
+            response_text.clone()
+        }
+    );
 
     #[derive(Deserialize)]
     struct ServerResponse {

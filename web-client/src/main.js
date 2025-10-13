@@ -11,7 +11,18 @@ class EventBookApp {
   constructor() {
     this.client = null;
     this.wasmInitialized = false;
-    this.serverUrl = window.location.origin.replace(":5173", ":3000"); // Dev proxy workaround
+
+    // Environment-aware server URL detection
+    if (import.meta.env.DEV) {
+      // Development: use Vite proxy
+      this.serverUrl = "/api";
+    } else {
+      // Production: use environment variable or default
+      this.serverUrl =
+        import.meta.env.VITE_SERVER_URL || "http://localhost:3000";
+    }
+
+    console.log("EventBook client connecting to:", this.serverUrl);
   }
 
   async init() {
