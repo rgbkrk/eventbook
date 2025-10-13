@@ -1,7 +1,5 @@
-use eventbook_core::{
-    Event, EventBuilder, EventStore, InMemoryEventStore, Projection, User, UserProjection,
-};
-use js_sys::Promise;
+use eventbook_core::{Event, EventStore, InMemoryEventStore, Projection, User, UserProjection};
+use js_sys::{Date, Promise};
 use serde::{Deserialize, Serialize};
 
 use wasm_bindgen::prelude::*;
@@ -241,30 +239,36 @@ impl EventBookClient {
         let payload_value: serde_json::Value = serde_json::from_str(&payload)
             .map_err(|e| JsError::new(&format!("Invalid JSON payload: {}", e)))?;
 
-        // Get next version
+        // Get next version (immutable borrow)
         let current_version = self.local_store.get_latest_version(&aggregate_id);
         let next_version = current_version + 1;
 
-        // Build event
-        let event = EventBuilder::new()
-            .event_type(event_type)
-            .aggregate_id(aggregate_id)
-            .payload(payload_value)
-            .map_err(|e| JsError::new(&format!("Payload error: {}", e)))?
-            .build(next_version)
-            .map_err(|e| JsError::new(&format!("Event build error: {}", e)))?;
+        // Build the event with browser-compatible timestamp
+        let timestamp = Date::now() as i64;
+        let event_id = format!("event-{}", timestamp);
 
-        // Store locally
-        self.local_store
-            .append_event(event.clone())
-            .map_err(|e| JsError::new(&format!("Store error: {}", e)))?;
+        let event = Event {
+            id: event_id.clone(),
+            event_type,
+            aggregate_id,
+            payload: payload_value,
+            timestamp,
+            version: next_version,
+        };
 
-        // Update projection
-        self.user_projection
-            .apply_new_events(&[event.clone()])
-            .map_err(|e| JsError::new(&format!("Projection error: {}", e)))?;
+        // Store locally (first mutable operation)
+        match self.local_store.append_event(event.clone()) {
+            Ok(_) => {}
+            Err(e) => return Err(JsError::new(&format!("Store error: {}", e))),
+        }
 
-        log!("Event {} submitted locally", event.id);
+        // Update projection (second mutable operation)
+        match self.user_projection.apply_new_events(&[event.clone()]) {
+            Ok(_) => {}
+            Err(e) => return Err(JsError::new(&format!("Projection error: {}", e))),
+        }
+
+        log!("Event {} submitted locally", event_id);
         Ok(event.into())
     }
 
@@ -472,12 +476,12 @@ async fn fetch_events_from_server(server_url: &str) -> Result<Vec<Event>, String
 
 #[wasm_bindgen]
 pub fn current_timestamp() -> f64 {
-    eventbook_core::current_timestamp() as f64
+    Date::now()
 }
 
 #[wasm_bindgen]
 pub fn generate_event_id() -> String {
-    eventbook_core::generate_event_id()
+    format!("event-{}", Date::now() as i64)
 }
 
 #[wasm_bindgen]
@@ -493,7 +497,7 @@ pub fn create_sample_user_payload(name: String, email: String) -> String {
     let payload = serde_json::json!({
         "name": name,
         "email": email,
-        "created_at": current_timestamp()
+        "created_at": Date::now()
     });
 
     serde_json::to_string(&payload).unwrap_or_default()
@@ -502,12 +506,12 @@ pub fn create_sample_user_payload(name: String, email: String) -> String {
 /// Test the materializer with sample events
 #[wasm_bindgen]
 pub fn test_materializer() -> js_sys::Array {
-    let timestamp = current_timestamp() as i64;
+    let timestamp = Date::now() as i64;
     let user_id = format!("test-user-{}", timestamp);
 
     let events = vec![
         Event {
-            id: generate_event_id(),
+            id: format!("event-{}", timestamp),
             event_type: "UserCreated".to_string(),
             aggregate_id: user_id.clone(),
             payload: serde_json::json!({
@@ -518,7 +522,7 @@ pub fn test_materializer() -> js_sys::Array {
             version: 1,
         },
         Event {
-            id: generate_event_id(),
+            id: format!("event-{}", timestamp + 1),
             event_type: "UserUpdated".to_string(),
             aggregate_id: user_id,
             payload: serde_json::json!({
