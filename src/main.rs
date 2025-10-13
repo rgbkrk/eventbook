@@ -1,9 +1,9 @@
 use turso::Builder;
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> turso::Result<()> {
     // Create a local SQLite database connection
-    let db = Builder::new_local("eventbook.db").build().await?;
+    let db = Builder::new_local(":memory:").build().await?;
     let conn = db.connect()?;
 
     // Create a simple table for testing
