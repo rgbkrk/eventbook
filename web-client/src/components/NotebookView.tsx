@@ -26,6 +26,7 @@ export function NotebookView() {
   // Use our clean hooks
   const {
     notebookId,
+    notebookState,
     title,
     isInitialized,
     isLoading,
@@ -72,13 +73,7 @@ export function NotebookView() {
     <>
       <EventBookSidebar
         notebookId={notebookId}
-        notebookState={{
-          cells: {},
-          outputs: {},
-          orderedCells: [],
-          lastProcessedTimestamp: 0,
-          events: [],
-        }} // TODO: Pass actual state from context
+        notebookState={notebookState}
         onUpdate={reload}
       />
 

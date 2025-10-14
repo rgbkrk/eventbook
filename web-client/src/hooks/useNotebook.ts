@@ -56,6 +56,7 @@ export function useNotebook() {
   return {
     // Basic notebook info
     notebookId,
+    notebookState,
     document,
     isInitialized,
     isLoading,
