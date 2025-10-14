@@ -15,6 +15,9 @@ use tokio::sync::RwLock;
 use tower_http::cors::CorsLayer;
 use tracing::{info, warn};
 
+mod websocket;
+use websocket::{websocket_handler, ConnectionManager};
+
 /// App state shared across handlers
 #[derive(Clone)]
 pub struct AppState {
@@ -22,6 +25,8 @@ pub struct AppState {
     pub stores: Arc<RwLock<HashMap<String, InMemoryEventStore>>>,
     /// Map of store_id -> document projection
     pub projections: Arc<RwLock<HashMap<String, DocumentProjection>>>,
+    /// WebSocket connection manager
+    pub connection_manager: Arc<ConnectionManager>,
 }
 
 impl AppState {
@@ -29,6 +34,7 @@ impl AppState {
         Self {
             stores: Arc::new(RwLock::new(HashMap::new())),
             projections: Arc::new(RwLock::new(HashMap::new())),
+            connection_manager: Arc::new(ConnectionManager::new()),
         }
     }
 
@@ -145,9 +151,15 @@ pub async fn submit_event(
         .map_err(event_error_to_response)?;
 
     // Update projection
-    if let Err(e) = projection.apply_new_events(&[event]) {
+    if let Err(e) = projection.apply_new_events(&[event.clone()]) {
         warn!("Failed to update projection for store {}: {}", store_id, e);
     }
+
+    // Broadcast event to WebSocket connections
+    app_state
+        .connection_manager
+        .broadcast_event(store_id.clone(), event)
+        .await;
 
     info!(
         "Event {} submitted to store {} successfully",
@@ -263,6 +275,7 @@ pub fn create_app(app_state: AppState) -> Router {
         .route("/stores/{store_id}/events", post(submit_event))
         .route("/stores/{store_id}/events", get(get_events))
         .route("/stores/{store_id}", get(get_store_info))
+        .route("/stores/{store_id}/ws", get(websocket_handler))
         .layer(CorsLayer::permissive())
         .with_state(app_state)
 }

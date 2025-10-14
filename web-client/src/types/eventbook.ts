@@ -11,9 +11,19 @@ export interface Event {
 // Cell types matching our Rust backend
 export type CellType = "code" | "markdown" | "sql" | "ai" | "raw";
 
-export type ExecutionState = "idle" | "queued" | "running" | "completed" | "error";
+export type ExecutionState =
+  | "idle"
+  | "queued"
+  | "running"
+  | "completed"
+  | "error";
 
-export type OutputType = "multimedia_display" | "multimedia_result" | "terminal" | "markdown" | "error";
+export type OutputType =
+  | "multimedia_display"
+  | "multimedia_result"
+  | "terminal"
+  | "markdown"
+  | "error";
 
 // Cell structure
 export interface Cell {
@@ -131,6 +141,7 @@ export interface NotebookState {
   outputs: Record<string, CellOutput>;
   orderedCells: Cell[];
   lastProcessedTimestamp: number;
+  events: Event[];
 }
 
 // Event payload types for specific operations
@@ -194,8 +205,14 @@ export interface UIState {
 
 // API client interface
 export interface EventBookAPI {
-  submitEvent(storeId: string, request: SubmitEventRequest): Promise<SubmitEventResponse>;
-  getEvents(storeId: string, query?: GetEventsQuery): Promise<GetEventsResponse>;
+  submitEvent(
+    storeId: string,
+    request: SubmitEventRequest,
+  ): Promise<SubmitEventResponse>;
+  getEvents(
+    storeId: string,
+    query?: GetEventsQuery,
+  ): Promise<GetEventsResponse>;
   getStoreInfo(storeId: string): Promise<StoreInfoResponse>;
   listStores(): Promise<string[]>;
 }
