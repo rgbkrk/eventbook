@@ -1,7 +1,7 @@
-use eventbook_core::{Event, EventStore, InMemoryEventStore, Projection, User, UserProjection};
+use eventbook_core::{Cell, CellType, Document, DocumentProjection, ExecutionState};
+use eventbook_core::{Event, EventStore, InMemoryEventStore, Projection};
 use js_sys::{Date, Promise};
 use serde::{Deserialize, Serialize};
-
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{console, Request, RequestInit, Response};
@@ -121,33 +121,61 @@ impl TryFrom<JsEvent> for Event {
     }
 }
 
-/// JavaScript-compatible User type
+/// JavaScript-compatible Cell type
 #[wasm_bindgen]
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct JsUser {
+pub struct JsCell {
     id: String,
-    name: String,
-    email: String,
+    cell_type: String,
+    source: String,
+    fractional_index: Option<String>,
+    execution_count: Option<u32>,
+    execution_state: String,
+    assigned_runtime_session: Option<String>,
+    last_execution_duration_ms: Option<u32>,
+    source_visible: bool,
+    output_visible: bool,
+    created_by: String,
+    document_id: String,
     created_at: f64,
     updated_at: f64,
-    active: bool,
 }
 
 #[wasm_bindgen]
-impl JsUser {
+impl JsCell {
     #[wasm_bindgen(getter)]
     pub fn id(&self) -> String {
         self.id.clone()
     }
 
     #[wasm_bindgen(getter)]
-    pub fn name(&self) -> String {
-        self.name.clone()
+    pub fn cell_type(&self) -> String {
+        self.cell_type.clone()
     }
 
     #[wasm_bindgen(getter)]
-    pub fn email(&self) -> String {
-        self.email.clone()
+    pub fn source(&self) -> String {
+        self.source.clone()
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn fractional_index(&self) -> Option<String> {
+        self.fractional_index.clone()
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn execution_state(&self) -> String {
+        self.execution_state.clone()
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn created_by(&self) -> String {
+        self.created_by.clone()
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn document_id(&self) -> String {
+        self.document_id.clone()
     }
 
     #[wasm_bindgen(getter)]
@@ -159,22 +187,88 @@ impl JsUser {
     pub fn updated_at(&self) -> f64 {
         self.updated_at
     }
+}
 
-    #[wasm_bindgen(getter)]
-    pub fn active(&self) -> bool {
-        self.active
+impl From<Cell> for JsCell {
+    fn from(cell: Cell) -> Self {
+        JsCell {
+            id: cell.id,
+            cell_type: match cell.cell_type {
+                CellType::Code => "code".to_string(),
+                CellType::Markdown => "markdown".to_string(),
+                CellType::Sql => "sql".to_string(),
+                CellType::Ai => "ai".to_string(),
+                CellType::Raw => "raw".to_string(),
+            },
+            source: cell.source,
+            fractional_index: cell.fractional_index,
+            execution_count: cell.execution_count.map(|v| v as u32),
+            execution_state: match cell.execution_state {
+                ExecutionState::Idle => "idle".to_string(),
+                ExecutionState::Queued => "queued".to_string(),
+                ExecutionState::Running => "running".to_string(),
+                ExecutionState::Completed => "completed".to_string(),
+                ExecutionState::Error => "error".to_string(),
+            },
+            assigned_runtime_session: cell.assigned_runtime_session,
+            last_execution_duration_ms: cell.last_execution_duration_ms.map(|v| v as u32),
+            source_visible: cell.source_visible,
+            output_visible: cell.output_visible,
+            created_by: cell.created_by,
+            document_id: cell.document_id,
+            created_at: cell.created_at as f64,
+            updated_at: cell.updated_at as f64,
+        }
     }
 }
 
-impl From<User> for JsUser {
-    fn from(user: User) -> Self {
-        JsUser {
-            id: user.id,
-            name: user.name,
-            email: user.email,
-            created_at: user.created_at as f64,
-            updated_at: user.updated_at as f64,
-            active: user.active,
+/// JavaScript-compatible Document type
+#[wasm_bindgen]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JsDocument {
+    id: String,
+    title: String,
+    metadata_json: String,
+    created_at: f64,
+    updated_at: f64,
+}
+
+#[wasm_bindgen]
+impl JsDocument {
+    #[wasm_bindgen(getter)]
+    pub fn id(&self) -> String {
+        self.id.clone()
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn title(&self) -> String {
+        self.title.clone()
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn metadata_json(&self) -> String {
+        self.metadata_json.clone()
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn created_at(&self) -> f64 {
+        self.created_at
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn updated_at(&self) -> f64 {
+        self.updated_at
+    }
+}
+
+impl From<Document> for JsDocument {
+    fn from(document: Document) -> Self {
+        JsDocument {
+            id: document.id,
+            title: document.title,
+            metadata_json: serde_json::to_string(&document.metadata).unwrap_or_default(),
+            created_at: document.created_at as f64,
+            updated_at: document.updated_at as f64,
         }
     }
 }
@@ -210,7 +304,7 @@ impl SyncResult {
 #[wasm_bindgen]
 pub struct EventBookClient {
     local_store: InMemoryEventStore,
-    user_projection: UserProjection,
+    document_projection: DocumentProjection,
     server_url: String,
 }
 
@@ -222,7 +316,7 @@ impl EventBookClient {
 
         EventBookClient {
             local_store: InMemoryEventStore::new(),
-            user_projection: UserProjection::new(),
+            document_projection: DocumentProjection::new(),
             server_url,
         }
     }
@@ -263,7 +357,7 @@ impl EventBookClient {
         }
 
         // Update projection (second mutable operation)
-        match self.user_projection.apply_new_events(&[event.clone()]) {
+        match self.document_projection.apply_new_events(&[event.clone()]) {
             Ok(_) => {}
             Err(e) => return Err(JsError::new(&format!("Projection error: {}", e))),
         }
@@ -306,35 +400,59 @@ impl EventBookClient {
         Ok(js_array)
     }
 
-    /// Get materialized users
+    /// Get materialized cells for a document
     #[wasm_bindgen]
-    pub fn get_materialized_users(&self) -> js_sys::Array {
-        let users = self.user_projection.get_active_users();
+    pub fn get_document_cells(&self, document_id: String) -> js_sys::Array {
+        let cells = self.document_projection.get_document_cells(&document_id);
         let js_array = js_sys::Array::new();
 
-        for user in users {
-            let js_user = JsUser::from(user.clone());
-            js_array.push(&JsValue::from(js_user));
+        for cell in cells {
+            let js_cell = JsCell::from(cell.clone());
+            js_array.push(&JsValue::from(js_cell));
         }
 
         js_array
     }
 
-    /// Get specific materialized user
+    /// Get ordered cells for a document
     #[wasm_bindgen]
-    pub fn get_materialized_user(&self, user_id: String) -> Option<JsUser> {
-        self.user_projection
-            .get_user(&user_id)
-            .map(|u| JsUser::from(u.clone()))
+    pub fn get_ordered_cells(&self, document_id: String) -> js_sys::Array {
+        let cells = self.document_projection.get_document_cells(&document_id);
+        let js_array = js_sys::Array::new();
+
+        for cell in cells {
+            let js_cell = JsCell::from(cell.clone());
+            js_array.push(&JsValue::from(js_cell));
+        }
+
+        js_array
     }
 
-    /// Get user count
+    /// Get specific cell by ID
     #[wasm_bindgen]
-    pub fn get_user_count(&self) -> u32 {
-        self.user_projection.user_count() as u32
+    pub fn get_cell(&self, cell_id: String) -> Option<JsCell> {
+        self.document_projection
+            .get_cell(&cell_id)
+            .map(|c| JsCell::from(c.clone()))
     }
 
-    /// Get event count
+    /// Get document by ID
+    #[wasm_bindgen]
+    pub fn get_document(&self, document_id: String) -> Option<JsDocument> {
+        self.document_projection
+            .get_document(&document_id)
+            .map(|d| JsDocument::from(d.clone()))
+    }
+
+    /// Get cell count for a document
+    #[wasm_bindgen]
+    pub fn get_cell_count(&self, document_id: String) -> u32 {
+        self.document_projection
+            .get_document_cells(&document_id)
+            .len() as u32
+    }
+
+    /// Get total event count
     #[wasm_bindgen]
     pub fn get_event_count(&self) -> u32 {
         self.local_store.get_event_count() as u32
@@ -344,7 +462,7 @@ impl EventBookClient {
     #[wasm_bindgen]
     pub fn clear_local_store(&mut self) {
         self.local_store = InMemoryEventStore::new();
-        self.user_projection = UserProjection::new();
+        self.document_projection = DocumentProjection::new();
         log!("Local store cleared");
     }
 
@@ -356,7 +474,7 @@ impl EventBookClient {
             .get_all_events()
             .map_err(|e| JsError::new(&format!("Failed to get events: {}", e)))?;
 
-        self.user_projection
+        self.document_projection
             .rebuild_from_events(&events)
             .map_err(|e| JsError::new(&format!("Failed to rebuild projections: {}", e)))?;
 
@@ -491,43 +609,69 @@ pub fn validate_json_payload(payload: String) -> Result<(), JsError> {
     Ok(())
 }
 
-/// Create sample user payload for testing
+/// Create sample cell creation payload for testing
 #[wasm_bindgen]
-pub fn create_sample_user_payload(name: String, email: String) -> String {
+pub fn create_sample_cell_payload(cell_type: String, source: String, created_by: String) -> String {
     let payload = serde_json::json!({
-        "name": name,
-        "email": email,
+        "cell_type": cell_type,
+        "source": source,
+        "created_by": created_by,
         "created_at": Date::now()
     });
 
     serde_json::to_string(&payload).unwrap_or_default()
 }
 
-/// Test the materializer with sample events
+/// Create sample document creation payload for testing
 #[wasm_bindgen]
-pub fn test_materializer() -> js_sys::Array {
+pub fn create_sample_document_payload(title: String, created_by: String) -> String {
+    let payload = serde_json::json!({
+        "title": title,
+        "created_by": created_by,
+        "created_at": Date::now(),
+        "metadata": {
+            "authors": [created_by],
+            "tags": [],
+            "custom": {}
+        }
+    });
+
+    serde_json::to_string(&payload).unwrap_or_default()
+}
+
+/// Test the document materializer with sample events
+#[wasm_bindgen]
+pub fn test_document_materializer() -> js_sys::Array {
     let timestamp = Date::now() as i64;
-    let user_id = format!("test-user-{}", timestamp);
+    let document_id = format!("test-doc-{}", timestamp);
+    let cell_id = format!("test-cell-{}", timestamp);
 
     let events = vec![
         Event {
             id: format!("event-{}", timestamp),
-            event_type: "UserCreated".to_string(),
-            aggregate_id: user_id.clone(),
+            event_type: "DocumentCreated".to_string(),
+            aggregate_id: document_id.clone(),
             payload: serde_json::json!({
-                "name": "Test User",
-                "email": "test@example.com"
+                "title": "Test Document",
+                "created_by": "test-user",
+                "metadata": {
+                    "authors": ["test-user"],
+                    "tags": [],
+                    "custom": {}
+                }
             }),
             timestamp,
             version: 1,
         },
         Event {
             id: format!("event-{}", timestamp + 1),
-            event_type: "UserUpdated".to_string(),
-            aggregate_id: user_id,
+            event_type: "CellCreated".to_string(),
+            aggregate_id: document_id.clone(),
             payload: serde_json::json!({
-                "name": "Updated Test User",
-                "email": "updated@example.com"
+                "cell_id": cell_id,
+                "cell_type": "code",
+                "source": "print('Hello, World!')",
+                "created_by": "test-user"
             }),
             timestamp: timestamp + 1000,
             version: 2,
@@ -535,16 +679,16 @@ pub fn test_materializer() -> js_sys::Array {
     ];
 
     // Create projection and materialize
-    let mut projection = UserProjection::new();
+    let mut projection = DocumentProjection::new();
     let _ = projection.rebuild_from_events(&events);
 
-    // Return materialized users
-    let users = projection.get_active_users();
+    // Return materialized cells
+    let cells = projection.get_document_cells(&document_id);
     let js_array = js_sys::Array::new();
 
-    for user in users {
-        let js_user = JsUser::from(user.clone());
-        js_array.push(&JsValue::from(js_user));
+    for cell in cells {
+        let js_cell = JsCell::from(cell.clone());
+        js_array.push(&JsValue::from(js_cell));
     }
 
     js_array

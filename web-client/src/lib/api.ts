@@ -16,7 +16,7 @@ class EventBookAPIClient implements EventBookAPI {
 
   private async request<T>(
     endpoint: string,
-    options: RequestInit = {}
+    options: RequestInit = {},
   ): Promise<T> {
     const url = `${this.baseUrl}${endpoint}`;
 
@@ -31,7 +31,7 @@ class EventBookAPIClient implements EventBookAPI {
     if (!response.ok) {
       const errorText = await response.text();
       throw new Error(
-        `API request failed: ${response.status} ${response.statusText}. ${errorText}`
+        `API request failed: ${response.status} ${response.statusText}. ${errorText}`,
       );
     }
 
@@ -40,20 +40,20 @@ class EventBookAPIClient implements EventBookAPI {
 
   async submitEvent(
     storeId: string,
-    request: SubmitEventRequest
+    request: SubmitEventRequest,
   ): Promise<SubmitEventResponse> {
     return this.request<SubmitEventResponse>(
       `/stores/${encodeURIComponent(storeId)}/events`,
       {
         method: "POST",
         body: JSON.stringify(request),
-      }
+      },
     );
   }
 
   async getEvents(
     storeId: string,
-    query: GetEventsQuery = {}
+    query: GetEventsQuery = {},
   ): Promise<GetEventsResponse> {
     const params = new URLSearchParams();
 
@@ -77,7 +77,7 @@ class EventBookAPIClient implements EventBookAPI {
 
   async getStoreInfo(storeId: string): Promise<StoreInfoResponse> {
     return this.request<StoreInfoResponse>(
-      `/stores/${encodeURIComponent(storeId)}`
+      `/stores/${encodeURIComponent(storeId)}`,
     );
   }
 
@@ -113,7 +113,7 @@ export const eventOperations = {
     cellType: "code" | "markdown" | "sql" | "ai" | "raw",
     source: string = "",
     fractionalIndex: string = "a0",
-    createdBy: string = "user"
+    createdBy: string,
   ) => ({
     event_type: "CellCreated",
     payload: {
@@ -152,7 +152,7 @@ export const eventOperations = {
     cellId: string,
     executionState: "idle" | "queued" | "running" | "completed" | "error",
     runtimeSession?: string,
-    durationMs?: number
+    durationMs?: number,
   ) => ({
     event_type: "CellExecutionStateChanged",
     payload: {
@@ -166,9 +166,14 @@ export const eventOperations = {
   addOutput: (
     outputId: string,
     cellId: string,
-    outputType: "multimedia_display" | "multimedia_result" | "terminal" | "markdown" | "error",
+    outputType:
+      | "multimedia_display"
+      | "multimedia_result"
+      | "terminal"
+      | "markdown"
+      | "error",
     data: string,
-    position: number = 0
+    position: number = 0,
   ) => ({
     event_type: "CellOutputCreated",
     payload: {

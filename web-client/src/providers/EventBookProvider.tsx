@@ -135,7 +135,7 @@ function applyEventToState(
         source_visible: true,
         output_visible: true,
         ai_context_visible: true,
-        created_by: event.payload.created_by || "user",
+        created_by: event.payload.created_by || "unknown",
         document_id: event.aggregate_id,
         created_at: event.timestamp,
         updated_at: event.timestamp,
@@ -349,7 +349,7 @@ export function EventBookProvider({
   const initializeNotebook = useCallback(
     async (title = "Untitled Notebook", metadata = {}) => {
       const event = eventOperations.createDocument(`${title}`, {
-        authors: ["user"],
+        authors: [],
         tags: [],
         ...metadata,
       });
@@ -391,7 +391,7 @@ export function EventBookProvider({
         cellType,
         source,
         fractionalIndex,
-        "user",
+        "system",
       );
 
       await submitEvent(event);

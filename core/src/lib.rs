@@ -96,165 +96,6 @@ pub trait Projection {
     fn apply_new_events(&mut self, events: &[Event]) -> EventResult<()>;
 }
 
-/// Example User projection for demonstrating materialization
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct User {
-    pub id: String,
-    pub name: String,
-    pub email: String,
-    pub created_at: i64,
-    pub updated_at: i64,
-    pub active: bool,
-}
-
-/// State for the User projection - a simple in-memory map
-#[derive(Debug, Clone, Default)]
-pub struct UserProjectionState {
-    pub users: HashMap<String, User>,
-    pub last_processed_timestamp: i64,
-}
-
-/// Materializer for User events
-pub struct UserMaterializer;
-
-impl Materializer for UserMaterializer {
-    type State = UserProjectionState;
-    type Error = EventError;
-
-    fn initial_state() -> Self::State {
-        UserProjectionState::default()
-    }
-
-    fn apply_event(state: &Self::State, event: &Event) -> Result<Self::State, Self::Error> {
-        let mut new_state = state.clone();
-        new_state.last_processed_timestamp = event.timestamp;
-
-        match event.event_type.as_str() {
-            "UserCreated" => {
-                let user = User {
-                    id: event.aggregate_id.clone(),
-                    name: event
-                        .payload
-                        .get("name")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .to_string(),
-                    email: event
-                        .payload
-                        .get("email")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .to_string(),
-                    created_at: event.timestamp,
-                    updated_at: event.timestamp,
-                    active: true,
-                };
-                new_state.users.insert(event.aggregate_id.clone(), user);
-            }
-            "UserUpdated" => {
-                if let Some(user) = new_state.users.get_mut(&event.aggregate_id) {
-                    if let Some(name) = event.payload.get("name").and_then(|v| v.as_str()) {
-                        user.name = name.to_string();
-                    }
-                    if let Some(email) = event.payload.get("email").and_then(|v| v.as_str()) {
-                        user.email = email.to_string();
-                    }
-                    user.updated_at = event.timestamp;
-                }
-            }
-            "UserDeleted" => {
-                if let Some(user) = new_state.users.get_mut(&event.aggregate_id) {
-                    user.active = false;
-                    user.updated_at = event.timestamp;
-                }
-            }
-            _ => {
-                // Unknown event type, ignore
-            }
-        }
-
-        Ok(new_state)
-    }
-
-    fn handles_event_type(event_type: &str) -> bool {
-        matches!(event_type, "UserCreated" | "UserUpdated" | "UserDeleted")
-    }
-}
-
-/// User projection implementation
-pub struct UserProjection {
-    state: UserProjectionState,
-}
-
-impl UserProjection {
-    pub fn new() -> Self {
-        Self {
-            state: UserMaterializer::initial_state(),
-        }
-    }
-
-    /// Get all active users
-    pub fn get_active_users(&self) -> Vec<&User> {
-        self.state.users.values().filter(|u| u.active).collect()
-    }
-
-    /// Get a specific user by ID
-    pub fn get_user(&self, user_id: &str) -> Option<&User> {
-        self.state.users.get(user_id)
-    }
-
-    /// Get user count
-    pub fn user_count(&self) -> usize {
-        self.state.users.values().filter(|u| u.active).count()
-    }
-}
-
-impl Default for UserProjection {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl Projection for UserProjection {
-    type State = UserProjectionState;
-
-    fn rebuild_from_events(&mut self, events: &[Event]) -> EventResult<()> {
-        let mut state = UserMaterializer::initial_state();
-
-        for event in events {
-            if UserMaterializer::handles_event_type(&event.event_type) {
-                state = UserMaterializer::apply_event(&state, event).map_err(|e| {
-                    EventError::ValidationError(format!("Materialization failed: {}", e))
-                })?;
-            }
-        }
-
-        self.state = state;
-        Ok(())
-    }
-
-    fn get_state(&self) -> &Self::State {
-        &self.state
-    }
-
-    fn last_processed_timestamp(&self) -> i64 {
-        self.state.last_processed_timestamp
-    }
-
-    fn apply_new_events(&mut self, events: &[Event]) -> EventResult<()> {
-        for event in events {
-            if event.timestamp > self.state.last_processed_timestamp
-                && UserMaterializer::handles_event_type(&event.event_type)
-            {
-                self.state = UserMaterializer::apply_event(&self.state, event).map_err(|e| {
-                    EventError::ValidationError(format!("Materialization failed: {}", e))
-                })?;
-            }
-        }
-        Ok(())
-    }
-}
-
 /// Builder for creating events with validation
 #[derive(Debug, Clone)]
 pub struct EventBuilder {
@@ -460,15 +301,15 @@ mod tests {
     #[test]
     fn test_event_builder() {
         let event = EventBuilder::new()
-            .event_type("UserCreated")
-            .aggregate_id("user-123")
-            .payload(serde_json::json!({"name": "John"}))
+            .event_type("CellCreated")
+            .aggregate_id("cell-123")
+            .payload(serde_json::json!({"source": "print('hello')"}))
             .unwrap()
             .build(1)
             .unwrap();
 
-        assert_eq!(event.event_type, "UserCreated");
-        assert_eq!(event.aggregate_id, "user-123");
+        assert_eq!(event.event_type, "CellCreated");
+        assert_eq!(event.aggregate_id, "cell-123");
         assert_eq!(event.version, 1);
     }
 
@@ -477,20 +318,20 @@ mod tests {
         let mut store = InMemoryEventStore::new();
 
         let event = EventBuilder::new()
-            .event_type("UserCreated")
-            .aggregate_id("user-123")
-            .payload(serde_json::json!({"name": "John"}))
+            .event_type("CellCreated")
+            .aggregate_id("cell-123")
+            .payload(serde_json::json!({"source": "print('hello')"}))
             .unwrap()
             .build(1)
             .unwrap();
 
         store.append_event(event.clone()).unwrap();
 
-        let events = store.get_events("user-123").unwrap();
+        let events = store.get_events("cell-123").unwrap();
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].id, event.id);
 
-        assert_eq!(store.get_latest_version("user-123"), 1);
+        assert_eq!(store.get_latest_version("cell-123"), 1);
     }
 
     #[test]
@@ -498,17 +339,17 @@ mod tests {
         let mut store = InMemoryEventStore::new();
 
         let event1 = EventBuilder::new()
-            .event_type("UserCreated")
-            .aggregate_id("user-123")
-            .payload(serde_json::json!({"name": "John"}))
+            .event_type("CellCreated")
+            .aggregate_id("cell-123")
+            .payload(serde_json::json!({"source": "print('hello')"}))
             .unwrap()
             .build(1)
             .unwrap();
 
         let event2 = EventBuilder::new()
-            .event_type("UserUpdated")
-            .aggregate_id("user-123")
-            .payload(serde_json::json!({"name": "Jane"}))
+            .event_type("CellSourceUpdated")
+            .aggregate_id("cell-123")
+            .payload(serde_json::json!({"source": "print('world')"}))
             .unwrap()
             .build(3) // Wrong version - should be 2
             .unwrap();

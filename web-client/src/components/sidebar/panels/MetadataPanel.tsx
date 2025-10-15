@@ -11,7 +11,6 @@ import { Input } from "@/components/ui/input";
 import type { SidebarPanelProps } from "../types";
 import {
   FileText,
-  User,
   Tag,
   Calendar,
   Clock,
@@ -123,7 +122,6 @@ export const MetadataPanel: React.FC<SidebarPanelProps> = ({
                         key={idx}
                         className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-gray-100 text-gray-800 rounded-md"
                       >
-                        <User className="h-3 w-3" />
                         {author}
                       </span>
                     ))}
